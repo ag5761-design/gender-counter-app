@@ -1,68 +1,51 @@
 import streamlit as st
+from deepface import DeepFace
+from retinaface import RetinaFace
 import numpy as np
-import cv2
 from PIL import Image
 import pandas as pd
-from mtcnn import MTCNN
-from deepface import DeepFace
 
-st.set_page_config(layout="wide")
 st.title("👥 Gender Participant Counter — SDG5 AI")
 
-st.info("Upload image → AI detects faces → predicts gender → counts participants")
-
-detector = MTCNN()
-
-file = st.file_uploader("Upload Group Image", type=["jpg","png","jpeg"])
+file = st.file_uploader("Upload Image", type=["jpg","png","jpeg"])
 
 if file:
     img = Image.open(file).convert("RGB")
     img_np = np.array(img)
 
-    faces = detector.detect_faces(img_np)
+    detections = RetinaFace.detect_faces(img_np)
 
     male = female = unknown = 0
     rows = []
 
-    for face in faces:
-        x,y,w,h = face["box"]
-        x,y = max(0,x), max(0,y)
-        crop = img_np[y:y+h, x:x+w]
+    if isinstance(detections, dict):
+        for key in detections:
+            area = detections[key]["facial_area"]
+            x1,y1,x2,y2 = area["x1"],area["y1"],area["x2"],area["y2"]
+            crop = img_np[y1:y2, x1:x2]
 
-        try:
-            result = DeepFace.analyze(
-                crop,
-                actions=['gender'],
-                enforce_detection=False
-            )[0]
+            try:
+                res = DeepFace.analyze(
+                    crop,
+                    actions=['gender'],
+                    enforce_detection=False
+                )[0]
 
-            g = result["gender"]
-            m = g["Man"]
-            f = g["Woman"]
+                g = res["gender"]
+                m = g["Man"]
+                f = g["Woman"]
 
-            if abs(m-f) < 15:
-                label = "Unknown"
-                unknown += 1
-                color=(150,150,150)
-            elif m > f:
-                label = "Male"
-                male += 1
-                color=(0,0,255)
-            else:
-                label = "Female"
-                female += 1
-                color=(255,0,255)
+                if abs(m-f) < 15:
+                    label="Unknown"; unknown+=1
+                elif m>f:
+                    label="Male"; male+=1
+                else:
+                    label="Female"; female+=1
 
-        except:
-            label = "Unknown"
-            unknown += 1
-            color=(150,150,150)
+            except:
+                label="Unknown"; unknown+=1
 
-        cv2.rectangle(img_np,(x,y),(x+w,y+h),color,2)
-        cv2.putText(img_np,label,(x,y-6),
-                    cv2.FONT_HERSHEY_SIMPLEX,0.7,color,2)
-
-        rows.append([label])
+            rows.append([label])
 
     st.image(img_np)
 
@@ -78,9 +61,10 @@ if file:
         "Gender":["Male","Female","Unknown"],
         "Count":[male,female,unknown]
     })
+
     st.bar_chart(chart.set_index("Gender"))
 
     df = pd.DataFrame(rows, columns=["Gender"])
-    st.download_button("Download Report",
+    st.download_button("Download CSV",
                        df.to_csv(index=False),
-                       "gender_report.csv")
+                       "report.csv")
