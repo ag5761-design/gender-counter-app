@@ -1,8 +1,7 @@
 streamlit
-mtcnn
 deepface
-opencv-python
+retina-face
+opencv-python-headless
 pillow
 pandas
-tensorflow
-retina-face
+tensorflow==2.15.0
